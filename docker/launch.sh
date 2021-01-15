@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#npm run build
+npm run build
 
 pm2 start main.js
 
