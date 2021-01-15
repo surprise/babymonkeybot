@@ -25,6 +25,13 @@ client.on('message', async message => {
 			} catch (e) {
 				return message.channel.send('There was an error removing that word');
 			}
+		} else if (prefixless.startsWith('removeall')){
+			if (prefixless.split(' ').length === 1) return message.channel.send('You have to specify a word to remove!');
+			try {
+				await collection.deleteMany({});
+			} catch (e) {
+				return message.channel.send('There was an error removing that word');
+			}
 		}
 	}
 	const message_words = message.content.split(' ');
@@ -32,16 +39,14 @@ client.on('message', async message => {
 		const message_query = await collection.findOne({word: word});
 		if (message_query === null) {
 			await collection.insertOne({
-				word: word,
-				speaker: message.author.id
+				word: word
 			});
 		} else {
-			if (message_query.speaker !== message.author.id) {
-				try {
-					if (!message.member.roles.cache.has(process.env.MUTED_ROLE)) await message.member.roles.add(process.env.MUTED_ROLE);
-				} catch (e) {
-					console.log('Error adding muted role to', message.author.id, e);
-				}
+			try {
+				if (!message.member.roles.cache.has(process.env.MUTED_ROLE)) await message.member.roles.add(process.env.MUTED_ROLE);
+				return message.channel.send(message.member.nickname + ' was a baby and goofed up!');
+			} catch (e) {
+				console.log('Error adding muted role to', message.author.id, e);
 			}
 		}
 	}
