@@ -34,21 +34,36 @@ client.on('message', async message => {
 				return message.channel.send('There was an error removing that word');
 			}
 		} else if (prefixless.startsWith('removeall')){
-			if (prefixless.split(' ').length === 1) return message.channel.send('You have to specify a word to remove!');
 			try {
 				await collection.deleteMany({});
+				for (const role of Object.values(leaderboard_roles)) {
+					(await message.guild.roles.fetch(role)).members.some(member => {
+						try {
+							member.roles.remove(role);
+						} catch (e) {
+							console.log('Error removing roles', e);
+						}
+					});
+				}
+				return message.channel.send('All words removed!');
 			} catch (e) {
 				return message.channel.send('There was an error removing that word');
 			}
+		} else if (prefixless.startsWith('check')){
+			if (message.mentions.users.size === 0) return message.channel.send('You must mention someone!');
+			const words_from_person = await collection.find({speaker: message.mentions.users.first().id}).toArray();
+			return message.channel.send('That person has ' + words_from_person.length + ' words sent!');
 		}
 	}
 	const message_words = message.content.split(' ');
 	if (message_words.length > 1) return;
 	const message_query = await collection.findOne({word: message.content});
 	if (message_query === null) {
+		let speaker = message.author.id;
+		if (message.member.roles.cache.has(process.env.MUTED_ROLE)) speaker = '0';
 		await collection.insertOne({
 			word: message.content,
-			speaker: message.author.id
+			speaker: speaker
 		});
 	} else {
 		try {
@@ -76,7 +91,9 @@ client.on('message', async message => {
 				});
 			}
 			let i = 1;
-			const top_3 = Object.keys(people).sort((idA, idB) => people[idB] - people[idA]).slice(0, 2);
+			const top_3 = Object.keys(people).sort((idA, idB) => people[idB] - people[idA]);
+			if (top_3.indexOf('0') !== -1) top_3.splice(top_3.indexOf('0'));
+			top_3.splice(0, 2);
 			if (last_leaderboards === top_3) return;
 			last_leaderboards = top_3;
 			for (const id of top_3) {
