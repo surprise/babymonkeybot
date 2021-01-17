@@ -9,6 +9,8 @@ client.on('ready', async _ => {
 	const mongoClient = new MongoClient(process.env.MONGODB_URI, {useUnifiedTopology: true});
 	await mongoClient.connect();
 	collection = mongoClient.db('babymonkeybot').collection('data');
+	updateLBLoop();
+	console.log('Ready!');
 });
 
 const leaderboard_roles = {
@@ -18,6 +20,56 @@ const leaderboard_roles = {
 };
 
 let last_leaderboards = [];
+
+async function updateRoles() {
+	try {
+		const guild = await client.guilds.fetch(process.env.GUILD_ID);
+		const entries = await collection.find({}).toArray();
+		if (entries.length > 0) {
+			const people = {};
+			for (const entry of entries) {
+				if (people[entry.speaker] === undefined) people[entry.speaker] = 1;
+				else people[entry.speaker]++;
+			}
+			console.log(people);
+			for (const role of Object.values(leaderboard_roles)) {
+				(await guild.roles.fetch(role)).members.some(member => {
+					try {
+						member.roles.remove(role);
+					} catch (e) {
+						console.log('Error removing roles', e);
+					}
+				});
+			}
+			let i = 1;
+			const top_3 = Object.keys(people).sort((idA, idB) => people[idB] - people[idA]);
+			if (top_3.indexOf('0') !== -1) top_3.splice(top_3.indexOf('0'), 1);
+			if (top_3.length > 3) top_3.length = 3;
+			if (last_leaderboards === top_3) return;
+			last_leaderboards = top_3;
+			for (const id of top_3) {
+				try {
+					const member = await guild.members.fetch(id);
+					if (!member.roles.cache.has(process.env.MUTED_ROLE)) {
+						await member.roles.add(leaderboard_roles[String(i)]);
+						i++;
+					}
+				} catch (e) {
+					console.log('Error giving role', id, e);
+				}
+			}
+		}
+	} catch (e) {
+		console.log('Error updating lb', e);
+	}
+}
+
+async function updateLBLoop() {
+	await updateRoles();
+	console.log('updated roles');
+
+	setTimeout(updateLBLoop, 5000);
+}
 
 client.on('message', async message => {
 	if (!process.env.TARGET_CHANNELS.includes(message.channel.id)) return;
@@ -72,44 +124,6 @@ client.on('message', async message => {
 		} catch (e) {
 			console.log('Error adding muted role to', message.author.id, e);
 		}
-	}
-	try {
-		const entries = await collection.find({}).toArray();
-		if (entries.length > 0) {
-			const people = {};
-			for (const entry of entries) {
-				if (people[entry.speaker] === undefined) people[entry.speaker] = 1;
-				else people[entry.speaker]++;
-			}
-			for (const role of Object.values(leaderboard_roles)) {
-				(await message.guild.roles.fetch(role)).members.some(member => {
-					try {
-						member.roles.remove(role);
-					} catch (e) {
-						console.log('Error removing roles', e);
-					}
-				});
-			}
-			let i = 1;
-			const top_3 = Object.keys(people).sort((idA, idB) => people[idB] - people[idA]);
-			if (top_3.indexOf('0') !== -1) top_3.splice(top_3.indexOf('0'));
-			top_3.splice(0, 2);
-			if (last_leaderboards === top_3) return;
-			last_leaderboards = top_3;
-			for (const id of top_3) {
-				try {
-					const member = await message.guild.members.fetch(id);
-					if (!member.roles.cache.has(process.env.MUTED_ROLE)) {
-						await member.roles.add(leaderboard_roles[String(i)]);
-						i++;
-					}
-				} catch (e) {
-					console.log('Error giving role', id, e);
-				}
-			}
-		}
-	} catch (e) {
-		console.log('Error updating lb', e);
 	}
 });
 
