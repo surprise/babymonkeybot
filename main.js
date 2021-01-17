@@ -13,13 +13,7 @@ client.on('ready', async _ => {
 	console.log('Ready!');
 });
 
-const leaderboard_roles = {
-	1: process.env.FIRST_PLACE_ROLE,
-	2: process.env.SECOND_PLACE_ROLE,
-	3: process.env.THIRD_PLACE_ROLE
-};
-
-let last_leaderboards = [];
+let last_winner = null;
 
 async function updateRoles() {
 	try {
@@ -31,33 +25,24 @@ async function updateRoles() {
 				if (people[entry.speaker] === undefined) people[entry.speaker] = 1;
 				else people[entry.speaker]++;
 			}
-			console.log(people);
-			for (const role of Object.values(leaderboard_roles)) {
-				(await guild.roles.fetch(role)).members.some(member => {
-					try {
-						member.roles.remove(role);
-					} catch (e) {
-						console.log('Error removing roles', e);
-					}
-				});
-			}
-			let i = 1;
-			const top_3 = Object.keys(people).sort((idA, idB) => people[idB] - people[idA]);
-			if (top_3.indexOf('0') !== -1) top_3.splice(top_3.indexOf('0'), 1);
-			if (top_3.length > 3) top_3.length = 3;
-			if (last_leaderboards === top_3) return;
-			last_leaderboards = top_3;
-			for (const id of top_3) {
+			const sorted_players = Object.keys(people).sort((idA, idB) => people[idB] - people[idA]);
+			if (sorted_players.indexOf('0') !== -1) sorted_players.splice(sorted_players.indexOf('0'), 1);
+			let winner = null;
+			if (sorted_players.length !== 0) winner = sorted_players[0];
+			if (last_winner === winner) return;
+			if (winner !== null) {
 				try {
-					const member = await guild.members.fetch(id);
-					if (!member.roles.cache.has(process.env.MUTED_ROLE)) {
-						await member.roles.add(leaderboard_roles[String(i)]);
-						i++;
+					if (last_winner !== winner) {
+						const winner_role = await guild.roles.fetch(process.env.FIRST_PLACE_ROLE);
+						winner_role.members.some(async member => await member.roles.remove(process.env.FIRST_PLACE_ROLE));
 					}
+					const winner_member = await guild.members.fetch(winner);
+					if (!winner_member.roles.cache.has(process.env.MUTED_ROLE)) await winner_member.roles.add(process.env.FIRST_PLACE_ROLE);
 				} catch (e) {
-					console.log('Error giving role', id, e);
+					console.log('Error giving role', winner, e);
 				}
 			}
+			last_winner = winner;
 		}
 	} catch (e) {
 		console.log('Error updating lb', e);
@@ -66,7 +51,6 @@ async function updateRoles() {
 
 async function updateLBLoop() {
 	await updateRoles();
-	console.log('updated roles');
 
 	setTimeout(updateLBLoop, 5000);
 }
@@ -88,15 +72,14 @@ client.on('message', async message => {
 		} else if (prefixless.startsWith('removeall')){
 			try {
 				await collection.deleteMany({});
-				for (const role of Object.values(leaderboard_roles)) {
-					(await message.guild.roles.fetch(role)).members.some(member => {
-						try {
-							member.roles.remove(role);
-						} catch (e) {
-							console.log('Error removing roles', e);
-						}
-					});
-				}
+				(await message.guild.roles.fetch(process.env.FIRST_PLACE_ROLE)).members.some(member => {
+					console.log(member.id);
+					try {
+						member.roles.remove(process.env.FIRST_PLACE_ROLE);
+					} catch (e) {
+						console.log('Error removing roles', e);
+					}
+				});
 				return message.channel.send('All words removed!');
 			} catch (e) {
 				return message.channel.send('There was an error removing that word');
@@ -117,6 +100,7 @@ client.on('message', async message => {
 			word: message.content,
 			speaker: speaker
 		});
+		console.log(message.author.id, `sent a word (${message.content})`, speaker === '0' ? 'but they were muted' : '');
 	} else {
 		try {
 			if (!message.member.roles.cache.has(process.env.MUTED_ROLE)) await message.member.roles.add(process.env.MUTED_ROLE);
